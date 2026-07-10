@@ -4,6 +4,8 @@ use gtk::{gio, glib};
 use std::cell::RefCell;
 use std::sync::Arc;
 
+use crate::config::AppConfig;
+use crate::ui::SettingsWindow;
 use crate::youtube::api::{YouTubeClient, Video};
 use crate::youtube::auth::OAuthManager;
 
@@ -18,6 +20,9 @@ mod imp {
         pub refresh_button: RefCell<Option<gtk::Button>>,
         pub client: RefCell<Option<Arc<YouTubeClient>>>,
         pub oauth: RefCell<Option<Arc<OAuthManager>>>,
+        pub config: RefCell<Option<AppConfig>>,
+        pub client_id_entry: RefCell<Option<gtk::Entry>>,
+        pub client_secret_entry: RefCell<Option<gtk::Entry>>,
     }
 
     #[glib::object_subclass]
@@ -61,10 +66,29 @@ impl TubeSubWindow {
 
         let header = adw::HeaderBar::new();
         header.set_title_widget(Some(&gtk::Label::new(Some("TubeSub"))));
+
+        // Settings button
+        let settings_button = gtk::Button::from_icon_name("preferences-system-symbolic");
+        settings_button.set_tooltip_text(Some("Settings"));
+        let window_ref = self.downgrade();
+        settings_button.connect_clicked(move |_| {
+            if let Some(window) = window_ref.upgrade() {
+                let config = window.imp().config.borrow();
+                if let Some(config) = config.as_ref() {
+                    let settings = SettingsWindow::new(&window, config.clone());
+                    settings.present();
+                }
+            }
+        });
+        header.pack_end(&settings_button);
+
         main_box.append(&header);
 
         let stack = gtk::Stack::new();
         stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+
+        let setup_page = self.create_setup_page();
+        stack.add_named(&setup_page, Some("setup"));
 
         let auth_page = self.create_auth_page();
         stack.add_named(&auth_page, Some("auth"));
@@ -80,7 +104,127 @@ impl TubeSubWindow {
         *self.imp().status_page.borrow_mut() = Some(auth_page);
         *self.imp().video_list.borrow_mut() = Some(video_page);
 
-        self.init_auth();
+        // Initialize config
+        match AppConfig::new() {
+            Ok(config) => {
+                *self.imp().config.borrow_mut() = Some(config);
+                self.init_auth();
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize config: {}", e);
+            }
+        }
+    }
+
+    fn create_setup_page(&self) -> gtk::Box {
+        let setup_box = gtk::Box::new(gtk::Orientation::Vertical, 24);
+        setup_box.set_margin_top(48);
+        setup_box.set_margin_bottom(48);
+        setup_box.set_margin_start(48);
+        setup_box.set_margin_end(48);
+        setup_box.set_valign(gtk::Align::Center);
+        setup_box.set_halign(gtk::Align::Center);
+
+        let status = adw::StatusPage::new();
+        status.set_title("Welcome to TubeSub");
+        status.set_description(Some("Enter your YouTube API credentials to get started"));
+        status.set_icon_name(Some("dialog-information-symbolic"));
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 16);
+        content.set_halign(gtk::Align::Center);
+        content.set_width_request(400);
+
+        let group = adw::PreferencesGroup::new();
+        group.set_title("YouTube API Credentials");
+        group.set_description(Some("Get your credentials from Google Cloud Console \u{2192} APIs & Services \u{2192} Credentials"));
+
+        // Client ID
+        let client_id_row = adw::ActionRow::new();
+        client_id_row.set_title("Client ID");
+        let client_id_entry = gtk::Entry::new();
+        client_id_entry.set_hexpand(true);
+        client_id_entry.add_css_class("flat");
+        client_id_row.add_suffix(&client_id_entry);
+        group.add(&client_id_row);
+
+        // Client Secret
+        let client_secret_row = adw::ActionRow::new();
+        client_secret_row.set_title("Client Secret");
+        let client_secret_entry = gtk::Entry::new();
+        client_secret_entry.set_hexpand(true);
+        client_secret_entry.set_visibility(false);
+        client_secret_entry.add_css_class("flat");
+        client_secret_row.add_suffix(&client_secret_entry);
+        group.add(&client_secret_row);
+
+        content.append(&group);
+
+        let save_btn = gtk::Button::with_label("Save & Continue");
+        save_btn.add_css_class("suggested-action");
+        save_btn.add_css_class("pill");
+        save_btn.set_halign(gtk::Align::Center);
+        save_btn.set_margin_top(12);
+
+        let window_ref = self.downgrade();
+        let id_entry = client_id_entry.clone();
+        let secret_entry = client_secret_entry.clone();
+        save_btn.connect_clicked(move |_| {
+            if let Some(window) = window_ref.upgrade() {
+                let client_id = id_entry.text().to_string();
+                let client_secret = secret_entry.text().to_string();
+
+                if client_id.is_empty() || client_secret.is_empty() {
+                    let dialog = gtk::MessageDialog::new(
+                        Some(&window),
+                        gtk::DialogFlags::MODAL,
+                        gtk::MessageType::Warning,
+                        gtk::ButtonsType::Ok,
+                        "Please enter both Client ID and Client Secret.",
+                    );
+                    dialog.connect_response(|dialog, _| {
+                        dialog.close();
+                    });
+                    dialog.present();
+                    return;
+                }
+
+                let creds = crate::config::Credentials {
+                    client_id: Some(client_id),
+                    client_secret: Some(client_secret),
+                };
+
+                let config = window.imp().config.borrow();
+                if let Some(config) = config.as_ref() {
+                    match config.save_credentials(&creds) {
+                        Ok(_) => {
+                            window.init_auth();
+                        }
+                        Err(e) => {
+                            let dialog = gtk::MessageDialog::new(
+                                Some(&window),
+                                gtk::DialogFlags::MODAL,
+                                gtk::MessageType::Error,
+                                gtk::ButtonsType::Ok,
+                                &format!("Failed to save credentials: {}", e),
+                            );
+                            dialog.connect_response(|dialog, _| {
+                                dialog.close();
+                            });
+                            dialog.present();
+                        }
+                    }
+                }
+            }
+        });
+
+        content.append(&save_btn);
+        status.set_child(Some(&content));
+        setup_box.append(&status);
+
+        *self.imp().client_id_entry.borrow_mut() = Some(client_id_entry);
+        *self.imp().client_secret_entry.borrow_mut() = Some(client_secret_entry);
+
+        setup_box
     }
 
     fn create_auth_page(&self) -> adw::StatusPage {
@@ -137,15 +281,35 @@ impl TubeSubWindow {
     }
 
     fn init_auth(&self) {
-        let oauth = OAuthManager::new().expect("Failed to create OAuth manager");
+        let config = self.imp().config.borrow();
+        if let Some(config) = config.as_ref() {
+            if !config.has_valid_credentials() {
+                // Show setup wizard
+                if let Some(stack) = self.imp().stack.borrow().as_ref() {
+                    stack.set_visible_child_name("setup");
+                }
+                return;
+            }
 
-        if let Some(token) = oauth.load_token() {
-            let client = Arc::new(YouTubeClient::new(token.access_token));
-            *self.imp().client.borrow_mut() = Some(client);
-            *self.imp().oauth.borrow_mut() = Some(Arc::new(oauth));
-            self.show_video_list();
-        } else {
-            *self.imp().oauth.borrow_mut() = Some(Arc::new(oauth));
+            let creds = config.load_credentials();
+            let client_id = creds.client_id.unwrap_or_default();
+            let client_secret = creds.client_secret.unwrap_or_default();
+
+            match OAuthManager::new(client_id, client_secret) {
+                Ok(oauth) => {
+                    if let Some(token) = oauth.load_token() {
+                        let client = Arc::new(YouTubeClient::new(token.access_token));
+                        *self.imp().client.borrow_mut() = Some(client);
+                        *self.imp().oauth.borrow_mut() = Some(Arc::new(oauth));
+                        self.show_video_list();
+                    } else {
+                        *self.imp().oauth.borrow_mut() = Some(Arc::new(oauth));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to create OAuth manager: {}", e);
+                }
+            }
         }
     }
 

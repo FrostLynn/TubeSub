@@ -2,7 +2,6 @@ use adw::prelude::*;
 use gtk::gio;
 
 use crate::ui::TubeSubWindow;
-use crate::youtube::auth::OAuthManager;
 
 pub struct TubeSubApplication {
     app: adw::Application,

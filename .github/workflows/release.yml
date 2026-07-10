@@ -62,6 +62,11 @@ jobs:
         # Copy runtime DLL dependencies automatically
         ldd target/release/tubesub.exe | awk '/\/mingw64\/bin\// {print $3}' | sort -u | xargs -I{} cp "{}" release/
 
+        # Bundle GSettings schemas
+        mkdir -p release/share/glib-2.0/schemas
+        cp /mingw64/share/glib-2.0/schemas/*.xml release/share/glib-2.0/schemas/
+        glib-compile-schemas release/share/glib-2.0/schemas/
+
         # Create zip archive
         cd release
         7z a ../tubesub-windows-x86_64.zip *

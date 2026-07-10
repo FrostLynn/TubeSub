@@ -1,5 +1,4 @@
 use anyhow::Result;
-use gtk::glib;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -14,16 +13,22 @@ pub struct TokenData {
 #[derive(Debug)]
 pub struct OAuthManager {
     config_dir: PathBuf,
+    client_id: String,
+    client_secret: String,
 }
 
 impl OAuthManager {
-    pub fn new() -> Result<Self> {
+    pub fn new(client_id: String, client_secret: String) -> Result<Self> {
         let config_dir = dirs::config_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?
             .join("tubesub");
 
         std::fs::create_dir_all(&config_dir)?;
-        Ok(Self { config_dir })
+        Ok(Self {
+            config_dir,
+            client_id,
+            client_secret,
+        })
     }
 
     pub fn token_path(&self) -> PathBuf {
@@ -48,29 +53,22 @@ impl OAuthManager {
     }
 
     pub fn get_auth_url(&self) -> String {
-        let client_id = std::env::var("YOUTUBE_CLIENT_ID")
-            .unwrap_or_else(|_| "YOUR_CLIENT_ID".to_string());
         let redirect_uri = "http://localhost:8080/callback";
 
         format!(
             "https://accounts.google.com/o/oauth2/auth?client_id={}&redirect_uri={}&response_type=code&scope=https://www.googleapis.com/auth/youtube.force-ssl&access_type=offline&prompt=consent",
-            client_id, redirect_uri
+            self.client_id, redirect_uri
         )
     }
 
     pub fn exchange_code(&self, code: &str) -> Result<TokenData> {
-        let client_id = std::env::var("YOUTUBE_CLIENT_ID")
-            .unwrap_or_else(|_| "YOUR_CLIENT_ID".to_string());
-        let client_secret = std::env::var("YOUTUBE_CLIENT_SECRET")
-            .unwrap_or_else(|_| "YOUR_CLIENT_SECRET".to_string());
-
         let client = reqwest::blocking::Client::new();
         let resp = client
             .post("https://oauth2.googleapis.com/token")
             .form(&[
                 ("code", code),
-                ("client_id", &client_id),
-                ("client_secret", &client_secret),
+                ("client_id", &self.client_id),
+                ("client_secret", &self.client_secret),
                 ("redirect_uri", "http://localhost:8080/callback"),
                 ("grant_type", "authorization_code"),
             ])

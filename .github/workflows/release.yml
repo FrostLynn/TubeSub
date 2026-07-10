@@ -53,11 +53,41 @@ jobs:
         pkg-config --modversion libadwaita-1
 
         cargo build --release
+
+        # Bundle DLLs with the executable
+        mkdir -p release
+        cp target/release/tubesub.exe release/
+
+        # Copy required GTK/libadwaita DLLs
+        cp /mingw64/bin/libadwaita-1-0.dll release/
+        cp /mingw64/bin/libgtk-4-1.dll release/
+        cp /mingw64/bin/libglib-2.0-0.dll release/
+        cp /mingw64/bin/libgio-2.0-0.dll release/
+        cp /mingw64/bin/libgobject-2.0-0.dll release/
+        cp /mingw64/bin/libgdk-4-1.dll release/
+        cp /mingw64/bin/libcairo-2.dll release/
+        cp /mingw64/bin/libpango-1.0-0.dll release/
+        cp /mingw64/bin/libpangocairo-1.0-0.dll release/
+        cp /mingw64/bin/libharfbuzz-0.dll release/
+        cp /mingw64/bin/libfontconfig-1.dll release/
+        cp /mingw64/bin/libfreetype-6.dll release/
+        cp /mingw64/bin/libpng16-16.dll release/
+        cp /mingw64/bin/libepoxy-0.dll release/
+        cp /mingw64/bin/libgraphene-1.0-0.dll release/
+        cp /mingw64/bin/libpangoft2-1.0-0.dll release/
+        cp /mingw64/bin/libxml2-2.dll release/
+        cp /mingw64/bin/libgcc_s_seh-1.dll release/
+        cp /mingw64/bin/libstdc++-6.dll release/
+        cp /mingw64/bin/libwinpthread-1.dll release/
+
+        # Create zip archive
+        cd release
+        7z a ../tubesub-windows-x86_64.zip *
         
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: target/release/tubesub.exe
+        files: tubesub-windows-x86_64.zip
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

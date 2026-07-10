@@ -136,7 +136,7 @@ impl TubeSubWindow {
 
         let group = adw::PreferencesGroup::new();
         group.set_title("YouTube API Credentials");
-        group.set_description(Some("Get your credentials from Google Cloud Console \u{2192} APIs & Services \u{2192} Credentials"));
+        group.set_description(Some("Get your credentials from Google Cloud Console -> APIs & Services -> Credentials"));
 
         // Client ID
         let client_id_row = adw::ActionRow::new();

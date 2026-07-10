@@ -182,37 +182,45 @@ impl YouTubeClient {
     pub fn upload_caption(&self, video_id: &str, srt_content: &str, language: &str) -> Result<()> {
         let url = "https://www.googleapis.com/upload/youtube/v3/captions?part=snippet";
 
+        // Build multipart/related request manually
+        let boundary = "tubesub_boundary_12345";
         let metadata = serde_json::json!({
             "snippet": {
                 "videoId": video_id,
                 "language": language,
-                "name": format!("{} - {}", language, video_id),
-                "isDraft": false
+                "name": format!("{} - {}", language, video_id)
             }
         });
 
         let metadata_str = serde_json::to_string(&metadata)?;
 
-        // Build multipart form with metadata and content
-        let form = reqwest::blocking::multipart::Form::new()
-            .part(
-                "metadata",
-                reqwest::blocking::multipart::Part::bytes(metadata_str.into_bytes())
-                    .file_name("metadata.json")
-                    .mime_str("application/json; charset=UTF-8")?,
-            )
-            .part(
-                "file",
-                reqwest::blocking::multipart::Part::bytes(srt_content.as_bytes().to_vec())
-                    .file_name("caption.srt")
-                    .mime_str("application/x-subrip")?,
-            );
+        // Build multipart body
+        let mut body = Vec::new();
+
+        // Part 1: Metadata
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Type: application/json; charset=UTF-8\r\n\r\n");
+        body.extend_from_slice(metadata_str.as_bytes());
+        body.extend_from_slice(b"\r\n");
+
+        // Part 2: Caption content
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Type: application/x-subrip\r\n\r\n");
+        body.extend_from_slice(srt_content.as_bytes());
+        body.extend_from_slice(b"\r\n");
+
+        // End boundary
+        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
 
         let resp = self
             .http
             .post(url)
             .bearer_auth(&self.access_token)
-            .multipart(form)
+            .header(
+                "Content-Type",
+                format!("multipart/related; boundary={}", boundary),
+            )
+            .body(body)
             .send()?;
 
         let status = resp.status();

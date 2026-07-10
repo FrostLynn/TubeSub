@@ -12,7 +12,9 @@ fn set_gsettings_schema_dir() {
         if let Some(exe_dir) = exe_path.parent() {
             let schema_dir = exe_dir.join("share").join("glib-2.0").join("schemas");
             if schema_dir.exists() {
-                std::env::set_var("GSETTINGS_SCHEMA_DIR", &schema_dir);
+                unsafe {
+                    std::env::set_var("GSETTINGS_SCHEMA_DIR", &schema_dir);
+                }
             }
         }
     }

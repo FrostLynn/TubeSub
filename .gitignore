@@ -2,3 +2,5 @@
 .env
 *.Zone.Identifier
 .commandcode/
+prd.md
+error.md

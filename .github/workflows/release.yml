@@ -1,0 +1,58 @@
+name: Release TubeSub
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gtk4
+          mingw-w64-x86_64-libadwaita
+          mingw-w64-x86_64-pkg-config
+          mingw-w64-x86_64-gcc
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: x86_64-pc-windows-gnu
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    - name: Build
+      shell: msys2 {0}
+      run: |
+        export PATH="/c/Users/runneradmin/.cargo/bin:$PATH"
+        export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
+        cargo build --release --target x86_64-pc-windows-gnu
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: target/x86_64-pc-windows-gnu/release/tubesub.exe
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

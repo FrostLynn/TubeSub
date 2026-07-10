@@ -179,10 +179,10 @@ impl YouTubeClient {
         Ok(videos)
     }
 
-    pub fn upload_caption(&self, video_id: &str, _srt_content: &str, language: &str) -> Result<()> {
-        let url = "https://www.googleapis.com/youtube/v3/captions?part=snippet";
+    pub fn upload_caption(&self, video_id: &str, srt_content: &str, language: &str) -> Result<()> {
+        let url = "https://www.googleapis.com/upload/youtube/v3/captions?part=snippet";
 
-        let body = serde_json::json!({
+        let metadata = serde_json::json!({
             "snippet": {
                 "videoId": video_id,
                 "language": language,
@@ -191,12 +191,28 @@ impl YouTubeClient {
             }
         });
 
+        let metadata_str = serde_json::to_string(&metadata)?;
+
+        // Build multipart form with metadata and content
+        let form = reqwest::blocking::multipart::Form::new()
+            .part(
+                "metadata",
+                reqwest::blocking::multipart::Part::bytes(metadata_str.into_bytes())
+                    .file_name("metadata.json")
+                    .mime_str("application/json; charset=UTF-8")?,
+            )
+            .part(
+                "file",
+                reqwest::blocking::multipart::Part::bytes(srt_content.as_bytes().to_vec())
+                    .file_name("caption.srt")
+                    .mime_str("application/x-subrip")?,
+            );
+
         let resp = self
             .http
             .post(url)
             .bearer_auth(&self.access_token)
-            .header("Content-Type", "application/json")
-            .json(&body)
+            .multipart(form)
             .send()?;
 
         let status = resp.status();
